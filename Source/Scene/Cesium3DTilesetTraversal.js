@@ -51,6 +51,7 @@ define([
             return;
         }
 
+        tileset._requestedTiles.length = 0;
         tileset._selectedTiles.length = 0;
         tileset._selectedTilesToStyle.length = 0;
         tileset._emptyTiles.length = 0;

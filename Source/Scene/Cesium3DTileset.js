@@ -30,6 +30,7 @@ define([
         './Cesium3DTilesetCache',
         './Cesium3DTilesetStatistics',
         './Cesium3DTilesetTraversal',
+        './Cesium3DTilesetOffscreenTraversal',
         './Cesium3DTileStyleEngine',
         './ClippingPlaneCollection',
         './LabelCollection',
@@ -72,6 +73,7 @@ define([
         Cesium3DTilesetCache,
         Cesium3DTilesetStatistics,
         Cesium3DTilesetTraversal,
+        Cesium3DTilesetOffscreenTraversal,
         Cesium3DTileStyleEngine,
         ClippingPlaneCollection,
         LabelCollection,
@@ -180,6 +182,11 @@ define([
         this._loadTimestamp = undefined;
         this._timeSinceLoad = 0.0;
         this._extras = undefined;
+
+        this._offscreenRequestedTiles = [];
+        this._offscreenSelectedTiles = [];
+        this._offscreenCache = new Cesium3DTilesetCache();
+        this._offscreenStatistics = new Cesium3DTilesetStatistics();
 
         this._cullWithChildrenBounds = defaultValue(options.cullWithChildrenBounds, true);
         this._allTilesAdditive = true;
@@ -1414,12 +1421,13 @@ define([
         return a._priority - b._priority;
     }
 
-    function requestTiles(tileset, statistics) {
-        // Sort requests by priority before making any requests.
-        // This makes it less likely that requests will be cancelled after being issued.
-        var requestedTiles = tileset._requestedTiles;
+    function requestTiles(tileset, requestedTiles, sortByPriority, statistics) {
+        if (sortByPriority) {
+            // Sort requests by priority before making any requests.
+            // This makes it less likely that requests will be cancelled after being issued.
+            requestedTiles.sort(sortRequestByPriority);
+        }
         var length = requestedTiles.length;
-        requestedTiles.sort(sortRequestByPriority);
         for (var i = 0; i < length; ++i) {
             requestContent(tileset, requestedTiles[i], statistics);
         }
@@ -1801,6 +1809,7 @@ define([
                 tileset.allTilesLoaded.raiseEvent();
             });
             if (!tileset._initialTilesLoaded) {
+                console.log('here');
                 tileset._initialTilesLoaded = true;
                 frameState.afterRender.push(function() {
                     tileset.initialTilesLoaded.raiseEvent();
@@ -1856,11 +1865,10 @@ define([
             this._cache.reset();
         }
 
-        this._requestedTiles.length = 0;
         Cesium3DTilesetTraversal.selectTiles(this, statistics, frameState);
 
         if (outOfCore) {
-            requestTiles(this, statistics);
+            requestTiles(this, this._requestedTiles, true, statistics);
             processTiles(this, frameState);
         }
 
@@ -1887,6 +1895,25 @@ define([
                 }
             }
         }
+    };
+
+    /**
+     * TODO private - who calls this?
+     * @param {FrameState} frameState The ray.
+     * @param {Number} [minimumGeometricError=0] Tiles with a geometric error less than this value are not sampled.
+     */
+    Cesium3DTileset.prototype.updateOffscreen = function(frameState, minimumGeometricError) {
+        minimumGeometricError = defaultValue(minimumGeometricError, 0.0);
+        var statistics = this._offscreenStatistics;
+        var ready = Cesium3DTilesetOffscreenTraversal.selectTiles(this, minimumGeometricError, statistics, frameState);
+
+        if (ready) {
+            updateTiles(this, frameState, statistics);
+            return;
+        }
+
+        requestTiles(this, this._requestedTiles, false, statistics);
+        processTiles(this, frameState);
     };
 
     /**

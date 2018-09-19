@@ -3633,6 +3633,38 @@ define([
     var scratchRight = new Cartesian3();
     var scratchUp = new Cartesian3();
 
+    function updateCameraFromRay(ray, camera) {
+        var direction = ray.direction;
+        var orthogonalAxis = Cartesian3.mostOrthogonalAxis(direction, scratchRight);
+        var right = Cartesian3.cross(direction, orthogonalAxis, scratchRight);
+        var up = Cartesian3.cross(direction, right, scratchUp);
+
+        camera.position = ray.origin;
+        camera.direction = direction;
+        camera.up = up;
+        camera.right = right;
+    }
+
+    function updateOffscreenPrimitives(scene, ray) {
+        var context = scene._context;
+        var uniformState = context.uniformState;
+        var frameState = scene._frameState;
+
+        var view = scene._pickOffscreenView;
+        scene._view = view;
+
+        updateCameraFromRay(ray, camera);
+
+        // Update with previous frame's number and time, assuming that render is called before picking.
+        updateFrameState(scene, frameState.frameNumber, frameState.time);
+        frameState.passes.pick = true;
+        frameState.passes.offscreen = true;
+
+        uniformState.update(frameState);
+
+
+    }
+
     function getRayIntersection(scene, ray) {
         var context = scene._context;
         var uniformState = context.uniformState;
@@ -3641,16 +3673,7 @@ define([
         var view = scene._pickOffscreenView;
         scene._view = view;
 
-        var direction = ray.direction;
-        var orthogonalAxis = Cartesian3.mostOrthogonalAxis(direction, scratchRight);
-        var right = Cartesian3.cross(direction, orthogonalAxis, scratchRight);
-        var up = Cartesian3.cross(direction, right, scratchUp);
-
-        var pickOffscreenCamera = view.camera;
-        pickOffscreenCamera.position = ray.origin;
-        pickOffscreenCamera.direction = direction;
-        pickOffscreenCamera.up = up;
-        pickOffscreenCamera.right = right;
+        updateCameraFromRay(ray, view.camera);
 
         scratchRectangle = BoundingRectangle.clone(view.viewport, scratchRectangle);
 
@@ -3753,6 +3776,10 @@ define([
      */
     Scene.prototype.drillPickFromRay = function(ray, limit, objectsToExclude) {
         return getRayIntersections(this, ray, limit, objectsToExclude);
+    };
+
+    Scene.prototype.pillFromRayMostDetailed = function(ray, limit, objectsToExclude) {
+
     };
 
     var scratchSurfacePosition = new Cartesian3();
